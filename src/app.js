@@ -38,7 +38,7 @@ app.use((req, res, next) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("Backend fonctionne correctement 🚀");
+  res.send("Backend fonctionne correctement !!! 😀");
 });
 
 // Routes publiques (authentification)
