@@ -57,4 +57,68 @@ const createHotel = async (req, res) => {
     }
 };
 
-module.exports = { getHotels, createHotel };
+// ==================== SHOW SINGLE HOTEL ====================
+const getHotelById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const hotel = await Hotel.findById(id).populate('addedBy', 'name email');
+        if (!hotel) {
+            return res.status(404).json({ success: false, message: 'Hôtel non trouvé' });
+        }
+        res.json({ success: true, data: hotel });
+    } catch (error) {
+        console.error(error);
+        res.status(400).json({ success: false, message: 'ID invalide ou erreur serveur' });
+    }
+};
+
+// ==================== UPDATE HOTEL ====================
+const updateHotel = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        const hotel = await Hotel.findById(id);
+        if (!hotel) {
+            return res.status(404).json({ success: false, message: 'Hôtel non trouvé' });
+        }
+
+        // Autoriser uniquement le créateur ou un admin à modifier
+        if (hotel.addedBy && hotel.addedBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: "Accès refusé" });
+        }
+
+        Object.assign(hotel, updates);
+        await hotel.save();
+
+        res.json({ success: true, message: 'Hôtel mis à jour', data: hotel });
+    } catch (error) {
+        console.error(error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// ==================== DELETE HOTEL ====================
+const deleteHotel = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const hotel = await Hotel.findById(id);
+        if (!hotel) {
+            return res.status(404).json({ success: false, message: 'Hôtel non trouvé' });
+        }
+
+        // Autoriser uniquement le créateur ou un admin à supprimer
+        if (hotel.addedBy && hotel.addedBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: "Accès refusé" });
+        }
+
+        await hotel.remove();
+
+        res.json({ success: true, message: 'Hôtel supprimé' });
+    } catch (error) {
+        console.error(error);
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+module.exports = { getHotels, createHotel, getHotelById, updateHotel, deleteHotel };
