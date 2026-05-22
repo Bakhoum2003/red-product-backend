@@ -94,14 +94,14 @@ const getRecentActivity = async (req, res) => {
 
         // Fusionner et trier par date de création
         const activity = [
-            ...recentUsers.map(u => ({
+            ...(recentUsers || []).map(u => ({
                 type: 'user',
                 id: u._id,
                 title: u.name,
                 subtitle: u.email,
                 date: u.createdAt
             })),
-            ...recentHotels.map(h => ({
+            ...(recentHotels || []).map(h => ({
                 type: 'hotel',
                 id: h._id,
                 title: h.name,

@@ -19,9 +19,11 @@ app.use(cors({
 app.use(express.json()); // Pour parser le JSON
 app.use(express.urlencoded({ extended: true })); // Pour parser les formulaires
 
+ 
 // Middleware de log des requêtes (utile pour le développement)
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
+   
   next();
 });
 

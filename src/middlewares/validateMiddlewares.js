@@ -10,9 +10,9 @@ const validate = (schema) => async (req, res, next) => {
         return res.status(400).json({
             success: false,
             message: "Données invalides",
-            errors: error.errors.map(err => ({
-                field: err.path.join('.'),
-                message: err.message
+            errors: (error.errors || []).map(err => ({
+                field: err.path ? err.path.join('.') : 'unknown',
+                message: err.message || 'Erreur inconnue'
             }))
         });
     }

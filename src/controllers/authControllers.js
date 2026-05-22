@@ -1,5 +1,10 @@
 const User = require('../models/user');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+
+
+
+
 
 const register = async (req, res) => {
     try {
@@ -13,8 +18,25 @@ const register = async (req, res) => {
             });
         }
 
+        // Validation du format email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: "Format d'email invalide"
+            });
+        }
+
+        // Validation de la longueur du mot de passe
+        if (password.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: "Le mot de passe doit contenir au moins 8 caractères"
+            });
+        }
+
         // Vérifier si l'utilisateur existe
-        const userExists = await User.findOne({ email });
+        const userExists = await User.findOne({ email: email.toLowerCase().trim() });
         if (userExists) {
             return res.status(400).json({
                 success: false,
@@ -22,7 +44,15 @@ const register = async (req, res) => {
             });
         }
 
-        const user = await User.create({ name, email, password });
+        // Hasher le mot de passe avant stockage
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const user = await User.create({
+            name: name.trim(),
+            email: email.toLowerCase().trim(),
+            password: hashedPassword
+        });
 
         res.status(201).json({
             success: true,
@@ -36,22 +66,25 @@ const register = async (req, res) => {
         });
     } catch (error) {
         if (error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map(val => val.message);
+            const messages = Object.values(error.errors ?? {}).map(val => val?.message ?? val);
             return res.status(400).json({
                 success: false,
                 message: messages[0] || "Erreur de validation"
             });
         }
+
         if (error.code === 11000) {
             return res.status(400).json({
                 success: false,
                 message: "Un utilisateur avec cet email existe déjà"
             });
         }
+
+        // Ne pas exposer error.message en production
         res.status(500).json({
             success: false,
             message: "Erreur serveur",
-            error: error.message
+            ...(process.env.NODE_ENV === 'development' && { error: error.message })
         });
     }
 };
