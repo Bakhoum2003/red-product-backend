@@ -12,7 +12,7 @@ router.get('/', getHotels);
 router.post('/create', protect, validate(createHotelSchema), createHotel);
 
 // Détails, mise à jour et suppression d'un hôtel
-router.get('/:id', protect, getHotelById);
+router.get('/:id', protect, getHotelById);  
 router.put('/:id', protect, updateHotel);
 router.delete('/:id', protect, deleteHotel);
 

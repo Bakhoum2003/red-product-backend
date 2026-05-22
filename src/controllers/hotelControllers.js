@@ -112,7 +112,7 @@ const deleteHotel = async (req, res) => {
             return res.status(403).json({ success: false, message: "Accès refusé" });
         }
 
-        await hotel.remove();
+        await hotel.deleteOne();
 
         res.json({ success: true, message: 'Hôtel supprimé' });
     } catch (error) {
