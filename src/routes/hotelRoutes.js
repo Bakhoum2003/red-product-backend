@@ -6,9 +6,9 @@ const { createHotelSchema } = require('../validations/hotelValidation');
 const { getHotels, createHotel } = require('../controllers/hotelControllers');
 
 // Routes publiques (tout le monde peut voir la liste)
-router.get('/hotels', getHotels);
+router.get('/', getHotels);
 
 // Routes protégées (seul l'admin connecté peut ajouter)
-router.post('/hotels', protect, validate(createHotelSchema), createHotel);
+router.post('/create', protect, validate(createHotelSchema), createHotel);
 
 module.exports = router;
