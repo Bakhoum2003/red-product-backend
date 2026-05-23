@@ -12,10 +12,32 @@ const app = express();
 connectDB();
 
 // Middlewares globaux
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'https://projet-red-product.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5500',
+  'http://127.0.0.1:5500'
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, origin);
+    return callback(new Error('Origin non autorisée par CORS'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'X-Requested-With'],
   credentials: true,
-} ));
+  optionsSuccessStatus: 204
+};
+
+app.use((req, res, next) => {
+  console.log('CORS origin:', req.headers.origin);
+  next();
+});
+
+app.use(cors(corsOptions));
 app.use(express.json()); // Pour parser le JSON
 app.use(express.urlencoded({ extended: true })); // Pour parser les formulaires
 
@@ -33,7 +55,6 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   next();
 });
 
