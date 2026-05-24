@@ -91,7 +91,7 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        let { email, password } = req.body;
 
         // Validation des champs
         if (!email || !password) {
@@ -100,6 +100,9 @@ const login = async (req, res) => {
                 message: "Veuillez fournir un email et un mot de passe"
             });
         }
+
+        // Normaliser l'email pour éviter les erreurs de casse/espace
+        email = String(email).toLowerCase().trim();
 
         const user = await User.findOne({ email });
         if (!user) {
