@@ -38,8 +38,8 @@ app.use((req, res, next) => {
 });
 
 app.use(cors(corsOptions));
-app.use(express.json()); // Pour parser le JSON
-app.use(express.urlencoded({ extended: true })); // Pour parser les formulaires
+app.use(express.json({ limit: '50mb' })); // Pour parser le JSON avec une limite plus élevée
+app.use(express.urlencoded({ limit: '50mb', extended: true })); // Pour parser les formulaires avec une limite plus élevée
 
  
 // Middleware de log des requêtes (utile pour le développement)
