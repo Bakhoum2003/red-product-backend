@@ -15,6 +15,7 @@ const createHotelSchema = z.object({
     stars: z.number().min(1).max(5).optional(),
     rooms: z.number().min(0).optional(),
     amenities: z.array(z.string()).optional(),
+    images: z.array(z.string()).optional(),
 });
 
 module.exports = { createHotelSchema };
