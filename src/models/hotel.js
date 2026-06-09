@@ -39,7 +39,7 @@ const hotelSchema = new mongoose.Schema({
     },
     pricePerNight: {
         type: Number,
-        min: 0,
+        min: 0, 
         default: 0
     },
     currency: {

@@ -3,7 +3,9 @@ const Hotel = require('../models/hotel');
 // ==================== GET ALL HOTELS ====================
 const getHotels = async (req, res) => {
     try {
-        const { page = 1, limit = 10, search = '' } = req.query;
+        const { page, limit, search = '' } = req.query;
+        const pageNumber = page ? parseInt(page, 10) : 1;
+        const limitNumber = limit ? parseInt(limit, 10) : null;
 
         const query = {};
 
@@ -14,20 +16,23 @@ const getHotels = async (req, res) => {
             ];
         }
 
-        const hotels = await Hotel.find(query)
+        let hotelsQuery = Hotel.find(query)
             .populate('addedBy', 'name email')
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit));
+            .sort({ createdAt: -1 });
 
+        if (limitNumber) {
+            hotelsQuery = hotelsQuery.skip((pageNumber - 1) * limitNumber).limit(limitNumber);
+        }
+
+        const hotels = await hotelsQuery;
         const total = await Hotel.countDocuments(query);
 
         res.json({
             success: true,
             count: hotels.length,
             total,
-            totalPages: Math.ceil(total / limit),
-            currentPage: parseInt(page),
+            totalPages: limitNumber ? Math.ceil(total / limitNumber) : 1,
+            currentPage: pageNumber,
             data: hotels
         });
     } catch (error) {
