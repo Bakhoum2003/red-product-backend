@@ -16,6 +16,9 @@ router.post('/login', validate(loginSchema), authController.login);
 router.post('/forgot-password', validate(forgotPasswordSchema), authController.forgotPassword);
 router.post('/reset-password', validate(resetPasswordSchema), authController.resetPassword);
 
+// Vérification de l'email (lien reçu par email)
+router.get('/verify/:token', authController.verifyEmail);
+
 // Route protégée
 router.post('/logout', protect, authController.logout);
 

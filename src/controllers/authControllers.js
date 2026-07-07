@@ -1,10 +1,8 @@
 const User = require('../models/user');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-
-
-
-
+const crypto = require('crypto');
+const { sendVerificationEmail } = require('../services/emailService');
 
 const register = async (req, res) => {
     try {
@@ -26,7 +24,7 @@ const register = async (req, res) => {
                 message: "Format d'email invalide"
             });
         }
-
+        
         // Validation de la longueur du mot de passe
         if (password.length < 8) {
             return res.status(400).json({
@@ -48,21 +46,35 @@ const register = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
+        // Générer le token de vérification d'email
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationExpire = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 heures
+
         const user = await User.create({
             name: name.trim(),
             email: email.toLowerCase().trim(),
-            password: hashedPassword
+            password: hashedPassword,
+            isVerified: false,
+            emailVerificationToken: verificationToken,
+            emailVerificationExpire: verificationExpire
         });
+
+        // Envoyer l'email de confirmation via Brevo
+        try {
+            await sendVerificationEmail(user, verificationToken);
+        } catch (mailError) {
+            // Annuler la création si l'email échoue
+            await User.findByIdAndDelete(user._id);
+            console.error('Erreur envoi email de vérification:', mailError);
+            return res.status(500).json({
+                success: false,
+                message: "Erreur lors de l'envoi de l'email de confirmation. Veuillez réessayer."
+            });
+        }
 
         res.status(201).json({
             success: true,
-            message: "Compte créé avec succès",
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role
-            }
+            message: "Compte créé avec succès. Un email de confirmation a été envoyé à " + user.email + ". Veuillez vérifier votre boîte mail pour activer votre compte."
         });
     } catch (error) {
         if (error.name === 'ValidationError') {
@@ -80,7 +92,6 @@ const register = async (req, res) => {
             });
         }
 
-        // Ne pas exposer error.message en production
         res.status(500).json({
             success: false,
             message: "Erreur serveur",
@@ -120,6 +131,14 @@ const login = async (req, res) => {
             });
         }
 
+        // Bloquer la connexion si l'email n'est pas vérifié
+        if (!user.isVerified) {
+            return res.status(403).json({
+                success: false,
+                message: "Veuillez confirmer votre adresse email avant de vous connecter."
+            });
+        }
+
         const token = jwt.sign(
             { id: user._id, role: user.role },
             process.env.JWT_SECRET,
@@ -146,12 +165,44 @@ const login = async (req, res) => {
     }
 };
 
+// ====================== VERIFY EMAIL ======================
+const verifyEmail = async (req, res) => {
+    try {
+        const { token } = req.params;
+
+        if (!token) {
+            return res.status(400).send(buildErrorPage('Token manquant', 'Aucun token de vérification fourni.'));
+        }
+
+        // Rechercher l'utilisateur par token non-expiré
+        const user = await User.findOne({
+            emailVerificationToken: token,
+            emailVerificationExpire: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).send(buildErrorPage(
+                'Lien invalide ou expiré',
+                'Ce lien de confirmation est invalide ou a expiré (validité 24h).<br>Veuillez vous réinscrire pour recevoir un nouveau lien.'
+            ));
+        }
+
+        // Confirmer le compte
+        user.isVerified = true;
+        user.emailVerificationToken = undefined;
+        user.emailVerificationExpire = undefined;
+        await user.save();
+
+        return res.send(buildSuccessPage(user.name));
+    } catch (error) {
+        console.error('Erreur vérification email:', error);
+        return res.status(500).send(buildErrorPage('Erreur serveur', 'Une erreur inattendue s\'est produite. Veuillez réessayer.'));
+    }
+};
+
 // ====================== LOGOUT ======================
 const logout = async (req, res) => {
     try {
-        // Pour l'instant on fait une déconnexion simple
-        // (le vrai blacklist de token viendra plus tard si besoin)
-
         res.json({
             success: true,
             message: "Déconnexion réussie"
@@ -192,8 +243,7 @@ const forgotPassword = async (req, res) => {
         user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save();
 
-        // Envoyer la version brute/non-hashée dans l'url
-        const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
+        const resetUrl = `${process.env.APP_URL}/reset-password/${resetToken}`;
 
         const message = `
             <h2>Demande de réinitialisation de mot de passe</h2>
@@ -204,18 +254,24 @@ const forgotPassword = async (req, res) => {
         `;
 
         try {
-            await require('../utils/sendEmail')({
-                email: user.email,
-                subject: "Réinitialisation de mot de passe - RED Product",
-                html: message
-            });
+            // Utiliser le service Brevo pour l'email de reset
+            const Brevo = require('@getbrevo/brevo');
+            const apiInstance = new Brevo.TransactionalEmailsApi();
+            const apiKey = apiInstance.authentications['apiKey'];
+            apiKey.apiKey = process.env.BREVO_API_KEY;
+
+            const sendSmtpEmail = new Brevo.SendSmtpEmail();
+            sendSmtpEmail.sender = { name: 'RED PRODUCT', email: 'no-reply@redproduct.com' };
+            sendSmtpEmail.to = [{ email: user.email, name: user.name }];
+            sendSmtpEmail.subject = '🔐 Réinitialisation de mot de passe — RED PRODUCT';
+            sendSmtpEmail.htmlContent = message;
+            await apiInstance.sendTransacEmail(sendSmtpEmail);
 
             res.json({
                 success: true,
                 message: "Un email de réinitialisation a été envoyé"
             });
         } catch (mailError) {
-            // Annuler le token si l'envoi de l'email échoue
             user.resetPasswordToken = undefined;
             user.resetPasswordExpire = undefined;
             await user.save();
@@ -245,7 +301,6 @@ const resetPassword = async (req, res) => {
             });
         }
 
-        // Hasher le token reçu pour le comparer avec le token hashé en BDD
         const hashedToken = require('crypto')
             .createHash('sha256')
             .update(token)
@@ -278,5 +333,67 @@ const resetPassword = async (req, res) => {
     }
 };
 
-module.exports = { register, login, logout, forgotPassword, resetPassword };
+// ====================== HELPERS PAGES HTML ======================
+function buildSuccessPage(userName) {
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email confirmé — RED PRODUCT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f4; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); padding: 56px 48px; max-width: 480px; width: 90%; text-align: center; }
+    .icon { font-size: 64px; margin-bottom: 24px; }
+    .brand { font-size: 22px; font-weight: 700; color: #1a1a2e; letter-spacing: 2px; margin-bottom: 32px; }
+    h1 { color: #27ae60; font-size: 26px; margin-bottom: 16px; }
+    p { color: #555; font-size: 15px; line-height: 1.7; margin-bottom: 12px; }
+    .btn { display: inline-block; margin-top: 28px; background: linear-gradient(135deg,#c0392b,#e74c3c); color: #fff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 700; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <div class="brand">RED PRODUCT</div>
+    <h1>Email confirmé !</h1>
+    <p>Bonjour <strong>${userName}</strong>,</p>
+    <p>Votre compte a été confirmé avec succès.</p>
+    <p>Vous pouvez maintenant vous connecter et accéder à votre espace d'administration.</p>
+    <a href="${process.env.FRONTEND_URL || '/'}" class="btn">Se connecter</a>
+  </div>
+</body>
+</html>`;
+}
 
+function buildErrorPage(title, message) {
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} — RED PRODUCT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f4f4; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); padding: 56px 48px; max-width: 480px; width: 90%; text-align: center; }
+    .icon { font-size: 64px; margin-bottom: 24px; }
+    .brand { font-size: 22px; font-weight: 700; color: #1a1a2e; letter-spacing: 2px; margin-bottom: 32px; }
+    h1 { color: #c0392b; font-size: 24px; margin-bottom: 16px; }
+    p { color: #555; font-size: 15px; line-height: 1.7; margin-bottom: 12px; }
+    .btn { display: inline-block; margin-top: 28px; background: linear-gradient(135deg,#c0392b,#e74c3c); color: #fff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 700; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">❌</div>
+    <div class="brand">RED PRODUCT</div>
+    <h1>${title}</h1>
+    <p>${message}</p>
+    <a href="${process.env.FRONTEND_URL || '/'}" class="btn">Retour à l'accueil</a>
+  </div>
+</body>
+</html>`;
+}
+
+module.exports = { register, login, logout, forgotPassword, resetPassword, verifyEmail };

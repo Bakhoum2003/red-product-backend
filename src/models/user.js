@@ -25,17 +25,15 @@ const userSchema = new mongoose.Schema({
         enum: ['admin'],
         default: 'admin'
     },
+    isVerified: {
+        type: Boolean,
+        default: false
+    },
+    emailVerificationToken: String,
+    emailVerificationExpire: Date,
     resetPasswordToken: String,
     resetPasswordExpire: Date
 }, { timestamps: true });
-
-// Hash du mot de passe avant sauvegarde
-// userSchema.pre('save', async function() {
-//     if (!this.isModified('password')) return;
-    
-//     const salt = await bcrypt.genSalt(10);
-//     this.password = await bcrypt.hash(this.password, salt);
-// });
 
 // Méthode pour comparer le mot de passe
 userSchema.methods.comparePassword = async function(candidatePassword) {
