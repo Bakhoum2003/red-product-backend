@@ -254,18 +254,26 @@ const forgotPassword = async (req, res) => {
         `;
 
         try {
-            // Utiliser le service Brevo pour l'email de reset
-            const Brevo = require('@getbrevo/brevo');
-            const apiInstance = new Brevo.TransactionalEmailsApi();
-            const apiKey = apiInstance.authentications['apiKey'];
-            apiKey.apiKey = process.env.BREVO_API_KEY;
+            // Appeler l'API REST Brevo pour envoyer l'email
+            const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json',
+                    'api-key': process.env.BREVO_API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sender: { name: process.env.SENDER_NAME || 'RED PRODUCT', email: process.env.BREVO_SENDER_EMAIL },
+                    to: [{ email: user.email, name: user.name }],
+                    subject: '🔐 Réinitialisation de mot de passe — RED PRODUCT',
+                    htmlContent: message
+                })
+            });
 
-            const sendSmtpEmail = new Brevo.SendSmtpEmail();
-            sendSmtpEmail.sender = { name: 'RED PRODUCT', email: 'no-reply@redproduct.com' };
-            sendSmtpEmail.to = [{ email: user.email, name: user.name }];
-            sendSmtpEmail.subject = '🔐 Réinitialisation de mot de passe — RED PRODUCT';
-            sendSmtpEmail.htmlContent = message;
-            await apiInstance.sendTransacEmail(sendSmtpEmail);
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(`Brevo API error: ${JSON.stringify(error)}`);
+            }
 
             res.json({
                 success: true,
@@ -301,6 +309,14 @@ const resetPassword = async (req, res) => {
             });
         }
 
+        // Validation de la longueur du mot de passe
+        if (password.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: "Le mot de passe doit contenir au moins 8 caractères"
+            });
+        }
+
         const hashedToken = require('crypto')
             .createHash('sha256')
             .update(token)
@@ -318,7 +334,9 @@ const resetPassword = async (req, res) => {
             });
         }
 
-        user.password = password;
+        // CORRECTION : Hasher le nouveau mot de passe avant stockage
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(password, salt);
         user.resetPasswordToken = undefined;
         user.resetPasswordExpire = undefined;
         await user.save();

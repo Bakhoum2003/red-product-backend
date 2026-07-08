@@ -1,10 +1,3 @@
-const Brevo = require('@getbrevo/brevo');
-
-// Initialisation du client Brevo
-const apiInstance = new Brevo.TransactionalEmailsApi();
-const apiKey = apiInstance.authentications['apiKey'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-
 // Logo SVG RED PRODUCT (inline)
 const LOGO_SVG = `
 <svg style="vertical-align:sub;" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -113,13 +106,32 @@ const sendVerificationEmail = async (user, token) => {
 </body>
 </html>`;
 
-    const sendSmtpEmail = new Brevo.SendSmtpEmail();
-    sendSmtpEmail.sender = { name: 'RED PRODUCT', email: 'no-reply@redproduct.com' };
-    sendSmtpEmail.to = [{ email: user.email, name: user.name }];
-    sendSmtpEmail.subject = '✅ Confirmez votre adresse email — RED PRODUCT';
-    sendSmtpEmail.htmlContent = htmlContent;
+    // Appeler l'API REST Brevo pour envoyer l'email
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+            'accept': 'application/json',
+            'api-key': process.env.BREVO_API_KEY,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            sender: { name: process.env.SENDER_NAME || 'RED PRODUCT', email: process.env.BREVO_SENDER_EMAIL },
+            to: [{ email: user.email, name: user.name }],
+            subject: '✅ Confirmez votre adresse email — RED PRODUCT',
+            htmlContent: htmlContent
+        })
+    });
 
-    await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log(`[Email] Envoi à ${user.email} - Status: ${response.status}`);
+
+    if (!response.ok) {
+        const error = await response.json();
+        console.error('[Email] Erreur Brevo:', error);
+        throw new Error(`Brevo API error: ${JSON.stringify(error)}`);
+    }
+
+    const result = await response.json();
+    console.log('[Email] Succès:', result.messageId);
 };
 
 module.exports = { sendVerificationEmail };
