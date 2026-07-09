@@ -4,6 +4,33 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const { sendVerificationEmail } = require('../services/emailService');
 
+const getPublicBaseUrl = (req) => {
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const protocol = Array.isArray(forwardedProto)
+        ? forwardedProto[0]
+        : forwardedProto || req.protocol || 'http';
+    const host = Array.isArray(forwardedHost)
+        ? forwardedHost[0]
+        : forwardedHost || req.get('host');
+
+    if (protocol && host) {
+        return `${protocol}://${host}`;
+    }
+
+    return process.env.APP_URL || 'http://localhost:5000';
+};
+
+const getFrontendUrl = (req) => {
+    return process.env.FRONTEND_URL || 'http://127.0.0.1:5500';
+};
+
+const redirectToFrontend = (req, res, status, message) => {
+    const frontendUrl = getFrontendUrl(req);
+    const params = new URLSearchParams({ verified: status, message });
+    return res.redirect(`${frontendUrl}?${params.toString()}`);
+};
+
 const register = async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -59,9 +86,11 @@ const register = async (req, res) => {
             emailVerificationExpire: verificationExpire
         });
 
+        const baseUrl = getPublicBaseUrl(req);
+
         // Envoyer l'email de confirmation via Brevo
         try {
-            await sendVerificationEmail(user, verificationToken);
+            await sendVerificationEmail(user, verificationToken, baseUrl);
         } catch (mailError) {
             // Annuler la création si l'email échoue
             await User.findByIdAndDelete(user._id);
@@ -171,7 +200,7 @@ const verifyEmail = async (req, res) => {
         const { token } = req.params;
 
         if (!token) {
-            return res.status(400).send(buildErrorPage('Token manquant', 'Aucun token de vérification fourni.'));
+            return redirectToFrontend(req, res, '0', 'Token manquant');
         }
 
         // Rechercher l'utilisateur par token non-expiré
@@ -181,10 +210,7 @@ const verifyEmail = async (req, res) => {
         });
 
         if (!user) {
-            return res.status(400).send(buildErrorPage(
-                'Lien invalide ou expiré',
-                'Ce lien de confirmation est invalide ou a expiré (validité 24h).<br>Veuillez vous réinscrire pour recevoir un nouveau lien.'
-            ));
+            return redirectToFrontend(req, res, '0', 'Lien invalide ou expiré');
         }
 
         // Confirmer le compte
@@ -193,10 +219,10 @@ const verifyEmail = async (req, res) => {
         user.emailVerificationExpire = undefined;
         await user.save();
 
-        return res.send(buildSuccessPage(user.name));
+        return redirectToFrontend(req, res, '1', 'Votre email a bien été confirmé');
     } catch (error) {
         console.error('Erreur vérification email:', error);
-        return res.status(500).send(buildErrorPage('Erreur serveur', 'Une erreur inattendue s\'est produite. Veuillez réessayer.'));
+        return redirectToFrontend(req, res, '0', 'Erreur lors de la confirmation');
     }
 };
 
@@ -243,7 +269,7 @@ const forgotPassword = async (req, res) => {
         user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save();
 
-        const resetUrl = `${process.env.APP_URL}/reset-password/${resetToken}`;
+        const resetUrl = `${getPublicBaseUrl(req)}/reset-password/${resetToken}`;
 
         const message = `
             <h2>Demande de réinitialisation de mot de passe</h2>

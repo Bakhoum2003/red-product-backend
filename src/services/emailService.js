@@ -11,9 +11,11 @@ const LOGO_SVG = `
  * Envoie un email de vérification d'adresse email à l'utilisateur.
  * @param {Object} user  L'objet utilisateur (name, email)
  * @param {string} token Le token de vérification brut (non-hashé)
+ * @param {string} baseUrl URL publique du backend utilisée pour construire le lien
  */
-const sendVerificationEmail = async (user, token) => {
-    const verifyUrl = `${process.env.APP_URL}/api/auth/verify/${token}`;
+const sendVerificationEmail = async (user, token, baseUrl = process.env.APP_URL || 'http://localhost:5000') => {
+    const normalizedBaseUrl = String(baseUrl || '').replace(/\/$/, '');
+    const verifyUrl = `${normalizedBaseUrl}/api/auth/verify/${token}`;
 
     const htmlContent = `
 <!DOCTYPE html>
