@@ -21,16 +21,6 @@ const getPublicBaseUrl = (req) => {
     return process.env.APP_URL || 'http://localhost:5000';
 };
 
-const getFrontendUrl = (req) => {
-    return process.env.FRONTEND_URL || 'http://127.0.0.1:5500';
-};
-
-const redirectToFrontend = (req, res, status, message) => {
-    const frontendUrl = getFrontendUrl(req);
-    const params = new URLSearchParams({ verified: status, message });
-    return res.redirect(`${frontendUrl}?${params.toString()}`);
-};
-
 const register = async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -200,7 +190,7 @@ const verifyEmail = async (req, res) => {
         const { token } = req.params;
 
         if (!token) {
-            return redirectToFrontend(req, res, '0', 'Token manquant');
+            return res.status(400).send(buildErrorPage('Token manquant', 'Aucun token de vérification fourni.'));
         }
 
         // Rechercher l'utilisateur par token non-expiré
@@ -210,7 +200,10 @@ const verifyEmail = async (req, res) => {
         });
 
         if (!user) {
-            return redirectToFrontend(req, res, '0', 'Lien invalide ou expiré');
+            return res.status(400).send(buildErrorPage(
+                'Lien invalide ou expiré',
+                'Ce lien de confirmation est invalide ou a expiré (validité 24h).<br>Veuillez vous réinscrire pour recevoir un nouveau lien.'
+            ));
         }
 
         // Confirmer le compte
@@ -219,10 +212,10 @@ const verifyEmail = async (req, res) => {
         user.emailVerificationExpire = undefined;
         await user.save();
 
-        return redirectToFrontend(req, res, '1', 'Votre email a bien été confirmé');
+        return res.send(buildSuccessPage(user.name));
     } catch (error) {
         console.error('Erreur vérification email:', error);
-        return redirectToFrontend(req, res, '0', 'Erreur lors de la confirmation');
+        return res.status(500).send(buildErrorPage('Erreur serveur', 'Une erreur inattendue s\'est produite. Veuillez réessayer.'));
     }
 };
 
@@ -404,7 +397,7 @@ function buildSuccessPage(userName) {
     <p>Bonjour <strong>${userName}</strong>,</p>
     <p>Votre compte a été confirmé avec succès.</p>
     <p>Vous pouvez maintenant vous connecter et accéder à votre espace d'administration.</p>
-    <a href="${process.env.FRONTEND_URL || '/'}" class="btn">Se connecter</a>
+    <a href="${process.env.FRONTEND_URL || 'https://projet-red-product.vercel.app'}" class="btn">Se connecter</a>
   </div>
 </body>
 </html>`;
@@ -434,7 +427,7 @@ function buildErrorPage(title, message) {
     <div class="brand">RED PRODUCT</div>
     <h1>${title}</h1>
     <p>${message}</p>
-    <a href="${process.env.FRONTEND_URL || '/'}" class="btn">Retour à l'accueil</a>
+    <a href="${process.env.FRONTEND_URL || 'https://projet-red-product.vercel.app'}" class="btn">Retour à l'accueil</a>
   </div>
 </body>
 </html>`;

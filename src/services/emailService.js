@@ -13,9 +13,9 @@ const LOGO_SVG = `
  * @param {string} token Le token de vérification brut (non-hashé)
  * @param {string} baseUrl URL publique du backend utilisée pour construire le lien
  */
-const sendVerificationEmail = async (user, token, baseUrl = process.env.APP_URL || 'http://localhost:5000') => {
-    const normalizedBaseUrl = String(baseUrl || '').replace(/\/$/, '');
-    const verifyUrl = `${normalizedBaseUrl}/api/auth/verify/${token}`;
+const sendVerificationEmail = async (user, token, baseUrl = process.env.APP_URL) => {
+    const publicBaseUrl = String(baseUrl || process.env.APP_URL || 'https://red-product-backend-k7mf.onrender.com').replace(/\/$/, '');
+    const verifyUrl = `${publicBaseUrl}/api/auth/verify/${token}`;
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -26,7 +26,8 @@ const sendVerificationEmail = async (user, token, baseUrl = process.env.APP_URL 
   <title>Confirmer votre email - RED PRODUCT</title>
 </head>
 <body style="margin:0;padding:0;font-family:'Segoe UI',Arial,sans-serif;background-color:#f4f4f4;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;padding:40px 0;">
+  <table width="100%" cellpadding="0" cellspacing="0" st
+  yle="background-color:#f4f4f4;padding:40px 0;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);max-width:600px;">
