@@ -2,9 +2,13 @@ const User = require('../models/user');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const { sendVerificationEmail } = require('../services/emailService');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/emailService');
+
+const trimTrailingSlash = (value) => String(value || '').trim().replace(/\/+$|\s+$/g, '');
 
 const getPublicBaseUrl = (req) => {
+    const backendUrl = trimTrailingSlash(process.env.BACKEND_URL || '');
+    const legacyUrl = trimTrailingSlash(process.env.APP_URL || '');
     const forwardedProto = req.headers['x-forwarded-proto'];
     const forwardedHost = req.headers['x-forwarded-host'];
     const protocol = Array.isArray(forwardedProto)
@@ -13,12 +17,19 @@ const getPublicBaseUrl = (req) => {
     const host = Array.isArray(forwardedHost)
         ? forwardedHost[0]
         : forwardedHost || req.get('host');
+    const requestUrl = protocol && host ? `${protocol}://${host}` : null;
 
-    if (protocol && host) {
-        return `${protocol}://${host}`;
+    if (backendUrl) {
+        return backendUrl;
     }
 
-    return process.env.APP_URL || 'http://localhost:5000';
+    if (process.env.NODE_ENV === 'production') {
+        if (legacyUrl) return legacyUrl;
+        if (requestUrl) return requestUrl;
+        throw new Error('BACKEND_URL est requis en production pour construire le lien de confirmation');
+    }
+
+    return requestUrl || legacyUrl || 'http://localhost:5000';
 };
 
 const register = async (req, res) => {
@@ -87,7 +98,8 @@ const register = async (req, res) => {
             console.error('Erreur envoi email de vérification:', mailError);
             return res.status(500).json({
                 success: false,
-                message: "Erreur lors de l'envoi de l'email de confirmation. Veuillez réessayer."
+                message: "Erreur lors de l'envoi de l'email de confirmation. Veuillez réessayer.",
+                ...(process.env.NODE_ENV !== 'production' ? { error: mailError.message } : undefined)
             });
         }
 
@@ -273,26 +285,7 @@ const forgotPassword = async (req, res) => {
         `;
 
         try {
-            // Appeler l'API REST Brevo pour envoyer l'email
-            const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-                method: 'POST',
-                headers: {
-                    'accept': 'application/json',
-                    'api-key': process.env.BREVO_API_KEY,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    sender: { name: process.env.SENDER_NAME || 'RED PRODUCT', email: process.env.BREVO_SENDER_EMAIL },
-                    to: [{ email: user.email, name: user.name }],
-                    subject: '🔐 Réinitialisation de mot de passe — RED PRODUCT',
-                    htmlContent: message
-                })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(`Brevo API error: ${JSON.stringify(error)}`);
-            }
+            await sendPasswordResetEmail(user, resetUrl);
 
             res.json({
                 success: true,
@@ -372,6 +365,7 @@ const resetPassword = async (req, res) => {
 
 // ====================== HELPERS PAGES HTML ======================
 function buildSuccessPage(userName) {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://projet-red-product.vercel.app';
     return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -397,13 +391,14 @@ function buildSuccessPage(userName) {
     <p>Bonjour <strong>${userName}</strong>,</p>
     <p>Votre compte a été confirmé avec succès.</p>
     <p>Vous pouvez maintenant vous connecter et accéder à votre espace d'administration.</p>
-    <a href="${process.env.FRONTEND_URL || 'https://projet-red-product.vercel.app'}" class="btn">Se connecter</a>
+    <a href="${frontendUrl}" class="btn">Se connecter</a>
   </div>
 </body>
 </html>`;
 }
 
 function buildErrorPage(title, message) {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://projet-red-product.vercel.app';
     return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -427,7 +422,7 @@ function buildErrorPage(title, message) {
     <div class="brand">RED PRODUCT</div>
     <h1>${title}</h1>
     <p>${message}</p>
-    <a href="${process.env.FRONTEND_URL || 'https://projet-red-product.vercel.app'}" class="btn">Retour à l'accueil</a>
+    <a href="${frontendUrl}" class="btn">Retour à l'accueil</a>
   </div>
 </body>
 </html>`;
